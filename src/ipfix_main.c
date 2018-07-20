@@ -6,14 +6,19 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <arpa/inet.h>
-#include <ipfix_decode.h>
+
+#include "ipFixHdr.h"
+
+extern int8_t decode_ipfix_msg (char *msg);
 
 int main(int argc, char **argv) {
 
     FILE *fd = NULL;
-    char *rec_buf = NULL, tmp = NULL;
-    unint32_t bytes2read = 0;
+    char *rec_buf = NULL, *tmp = NULL;
+    uint32_t bytes2read = 0;
     ipfix_msg_hdr_t msg_hdr;
 
     if (argc < 2) {
@@ -21,15 +26,15 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    memset(&msg_hdr, 0 sizeof(msg_hdr));
-    fd = fopen(argv[1], 'r');
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
+    fd = fopen(argv[1], "r");
     
-    if (fread((void *)msg_hdr, sizeof(ipfix_msg_hdr_t), 1, fd) > 0) {
+    if (fread((void *)&msg_hdr, sizeof(ipfix_msg_hdr_t), 1, fd) > 0) {
 
      /* calculate the bytes to read for a record */
-     msg_hdr.len = htons(msg_hdr.len);
+     msg_hdr.len = ntohs(msg_hdr.len);
      rec_buf = calloc(1, msg_hdr.len);
-     memcpy(rec_buf, msg_hdr, sizeof(msg_hdr));
+     memcpy(rec_buf, &msg_hdr, sizeof(msg_hdr));
      tmp = rec_buf+sizeof(msg_hdr);
      bytes2read = msg_hdr.len - sizeof(msg_hdr);
 
