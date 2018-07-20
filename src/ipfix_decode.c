@@ -73,8 +73,7 @@ int8_t decode_ipfix_msg (char *msg) {
              /* TDB: decode options tmpl */         
         } else if (ipfix_set_hdr->id >= 256) {
             ipfix_data_rec = (ipfix_data_rec_set_t *)ipfix_set_hdr;
-            /* TBD: Need to send the correct tmpl for decoding */
-            bytes_parsed += decode_ipfix_date_rec_set(&latest_template, ipfix_data_rec);
+            bytes_parsed += decode_ipfix_data_rec_set(ipfix_data_rec);
         } else {
              printf ("Error: unknown set header\n");
         }
@@ -85,18 +84,18 @@ int8_t decode_ipfix_msg (char *msg) {
 
 int8_t decode_ipfix_msg_hdr(ipfix_msg_hdr_t *hdr) {
 
-    hdr->ver = htons(hdr->ver);
-    hdr->len = htons(hdr->len);
-    hdr->export_time = htonl(hdr->export_time);
-    hdr->seq = htons(hdr->seq);
-    hdr->domain_id = htonl(hdr->domain_id);
+    hdr->ver = ntohs(hdr->ver);
+    hdr->len = ntohs(hdr->len);
+    hdr->export_time = ntohl(hdr->export_time);
+    hdr->seq = ntohs(hdr->seq);
+    hdr->domain_id = ntohl(hdr->domain_id);
     return 0;
 }
 
 int8_t decode_ipfix_set_hdr(char *msg, ipfix_set_hdr_t *hdr) {
 
-    hdr->id  = htons(hdr->id);
-    hdr->len = htons(hdr->len); 
+    hdr->id  = ntohs(hdr->id);
+    hdr->len = ntohs(hdr->len); 
     return 0;
 }
 
@@ -104,8 +103,8 @@ int decode_ipfix_tmpl_rec_set(ipfix_tmpl_rec_set_t *rec) {
    
     int i = 0;
     int bytes_parsed = 0;
-    rec->tmpl_hdr->id = htons(rec->tmpl_hdr->id);
-    rec->tmpl_hdr->field_count = htons(rec->tmpl_hdr->field_count);
+    rec->tmpl_hdr->id = ntohs(rec->tmpl_hdr->id);
+    rec->tmpl_hdr->field_count = ntohs(rec->tmpl_hdr->field_count);
     bytes_parsed += sizeof(ipfix_tmpl_rec_set_t); 
     /* decode fields /
     bytes_parsed += decode_ipfix_tmpl_field_spec(&rec->tmpl->fields[0], rec->tmpl_hdr->field_count); 
@@ -119,22 +118,96 @@ int decode_ipfix_tmpl_field_spec(ipfix_field_specifier_fmt_t *field, int cnt) {
     int bytes_parsed = 0;
     for (; cnt > 0; cnt--, i++) {
     
-        field[i].id = htons(filed[i].id);
+        field[i].id = ntohs(filed[i].id);
         bytes_parsed += sizeof(field[i].id);
         if (IS_ENT_SET(field[i].id) {
-            field[i].u.enterp.len = htons(filed[i].u.enterp.len);
+            field[i].u.enterp.len = ntohs(filed[i].u.enterp.len);
             bytes_parsed += sizeof(field[i].u.enterp.len);
-            field[i].u.enterp.num = htonl(filed[i].u.enterp.num);
+            field[i].u.enterp.num = ntohl(filed[i].u.enterp.num);
             bytes_parsed += sizeof(field[i].u.enterp.num);
         } else {
-            field[i].u.std.len = htons(filed[i].u.std.len);
+            field[i].u.std.len = ntohs(filed[i].u.std.len);
             bytes_parsed += sizeof(field[i].u.std.len);
         }
     }
     return bytes_parsed;
 }
 
-int8_t decode_ipfix_date_rec_set(ipfix_tmpl_rec_set_t *tmpl, ipfix_data_rec_set_t *data) {
+int8_t decode_ipfix_data_rec_set(ipfix_data_rec_set_t *data) {
+    
+    /* Print the 5-tuples of present in each record of data set */
+    int bytes_parsed = 0;
+    int fields_per_rec = 0;
+    int i = 0;
+    int rec_len = 0;
+    int rec_cnt = 0;
+    uint16_t ie_id = 0;
+    uint16_t src_port = 0, dst_port = 0;
+    uint32_t src_addr = 0, dst_port = 0;
+    ipfix_field_specifier_fmt_t *field = NULL;
+    char *rec_val = NULL;
 
-    return 0;
+    data->set_hdr.id = ntohs(data->set_hdr.id);
+    data->set_hdr.len = ntohs(data->set_hdr.len);
+    bytes_parsed += sizeof(data->set_hdr);
+
+    /* TBD: Need to send the correct tmpl for decoding by finding it from DB*/
+
+    /* Now use the latest template for decoding*/
+    fields_per_rec = latest_template->tmpl_hdr.field_cnt;
+    field = &latest_template->tmpl_hdr.fields[0];
+
+    rec_len = data->set_hdr.len - sizeof(data->set_hdr);
+    /* for all records in data set */
+    rec_val = &data->fields[0];
+    while (rec_len > 0) {
+        /* decode the fields in records using template*/
+        for (i = 0; i < fields_per_rec && rec_len > 0; i++ {
+           
+            ie_id = field[i].id >> 1;
+            if (IS_ENT_SET(field[i].id)) {
+                field_len -= field[i].u.enterp.len;
+            } else {
+                field_len -= filed[i].u.std.len;
+            }
+            /* In all the following assume incomming len is <= data type */
+            switch (ie_id) {
+                case 4: /* Protocol Id */
+                    memcpy(&proto_id, rec_val, field_len);
+                    proto_id = ntohs(proto_id);
+                    rec_val += field_len;
+                break;
+                case 7: /* Src Port */
+                    memcpy(&src_port, rec_val, field_len);
+                    src_port = ntohs(src_port);
+                    rec_val += field_len;
+                break;
+                case 8: /* Src Addr */
+                    memcpy(&src_addr, rec_val, field_len);
+                    src_addr = ntohs(src_addr);
+                    rec_val += field_len;
+                break;
+                case 11: /* Dest Port */
+                    memcpy(&dst_port, rec_val, field_len);
+                    dst_port = ntohs(dst_port);
+                    rec_val += field_len;
+                break;
+                case 12: /* Dest Addr */
+                    memcpy(&dst_addr, rec_val, field_len);
+                    dst_addr = ntohs(dst_addr);
+                    rec_val += field_len;
+                break;
+                default:
+                    rec_val += field_len;
+                break;
+            }
+            rec_len -= field_len;
+  
+        }
+        printf( "Decoded tuples of record[%d]: Protocol Id: [%d] Src Port: [%d] Src Addr: [%d] Dest Port: [%d] Dest Addr: [%d]\n", \
+                 rec_cnt++,proto_id, src_port, src_addr, dst_port, dst_addr); 
+    }
+
+
+    return data->set_hdr.len;
 }
